@@ -158,8 +158,13 @@
   <div class="card">
     <div class="row">
       <label>API 地址</label>
-      <input id="baseUrl" value="https://www.right.codes/draw/v1/images/generations">
-      <div class="hint" style="margin-top:4px;">默认指向 right.codes 的 OpenAI 兼容生图端点</div>
+      <input id="baseUrl" value="https://www.right.codes/draw/v1/images/generations" list="baseUrlList">
+      <datalist id="baseUrlList">
+        <option value="https://www.right.codes/draw/v1/images/generations">
+        <option value="https://scicode.top/v1/chat/completions">
+        <option value="https://scicode.top/v1/images/generations">
+      </datalist>
+      <div class="hint" style="margin-top:4px;">支持 OpenAI 兼容的 <code>/v1/images/generations</code> 与 <code>/v1/chat/completions</code> 端点（按 URL 自动识别）</div>
     </div>
 
     <div class="row">
@@ -284,8 +289,13 @@
     btn.textContent = '生成中...';
     showStatus('请求已发出，等待返回（生图通常需要 10-60 秒）...', 'loading');
 
+    const isChat = /\/chat\/completions(\?|$)/i.test(baseUrl);
+
     try {
-      const body = { model, prompt, n, size };
+      const body = isChat
+        ? buildChatBody({ model, prompt, n, size })
+        : { model, prompt, n, size };
+
       const resp = await fetch(baseUrl, {
         method: 'POST',
         headers: {
@@ -306,11 +316,12 @@
         throw new Error(`HTTP ${resp.status}：${msg}`);
       }
 
-      if (!data.data || !Array.isArray(data.data) || data.data.length === 0) {
-        throw new Error('返回结果为空：\n' + JSON.stringify(data, null, 2));
+      const items = isChat ? extractFromChat(data) : data.data;
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        throw new Error('返回结果为空或未识别到图片：\n' + JSON.stringify(data, null, 2));
       }
 
-      renderResults(data.data, prompt);
+      renderResults(items, prompt);
       hideStatus();
     } catch (err) {
       showStatus('生成失败：' + err.message, 'error');
@@ -318,6 +329,76 @@
       btn.disabled = false;
       btn.textContent = '生成图片';
     }
+  }
+
+  function buildChatBody({ model, prompt, n, size }) {
+    const hints = [];
+    if (size && size !== 'auto') hints.push(`size=${size}`);
+    if (n && n > 1) hints.push(`n=${n}`);
+    const userPrompt = hints.length ? `${prompt}\n\n[${hints.join(', ')}]` : prompt;
+    return {
+      model,
+      stream: false,
+      messages: [{ role: 'user', content: userPrompt }],
+    };
+  }
+
+  function extractFromChat(data) {
+    const choice = data.choices && data.choices[0];
+    if (!choice) return [];
+    const items = [];
+
+    const pushUrl = u => { if (u && !items.some(it => it.url === u)) items.push({ url: u }); };
+    const pushB64 = b => { if (b) items.push({ b64_json: b }); };
+
+    const msg = choice.message || {};
+    const content = msg.content;
+
+    const scanString = s => {
+      if (typeof s !== 'string') return;
+      const mdRe = /!\[[^\]]*\]\((https?:\/\/[^)\s]+|data:image\/[^;)]+;base64,[^)\s]+)\)/g;
+      let m;
+      while ((m = mdRe.exec(s)) !== null) {
+        const v = m[1];
+        if (v.startsWith('data:image/')) pushB64(v.split(',')[1]);
+        else pushUrl(v);
+      }
+      if (items.length === 0) {
+        const urlRe = /https?:\/\/\S+?\.(?:png|jpe?g|webp|gif)(?:\?\S*)?/gi;
+        while ((m = urlRe.exec(s)) !== null) pushUrl(m[0]);
+      }
+    };
+
+    if (typeof content === 'string') {
+      scanString(content);
+    } else if (Array.isArray(content)) {
+      content.forEach(part => {
+        if (!part) return;
+        if (part.type === 'image_url' && part.image_url) {
+          const u = typeof part.image_url === 'string' ? part.image_url : part.image_url.url;
+          if (u && u.startsWith('data:image/')) pushB64(u.split(',')[1]);
+          else pushUrl(u);
+        } else if (part.type === 'image' && part.source) {
+          if (part.source.type === 'base64' && part.source.data) pushB64(part.source.data);
+          else if (part.source.url) pushUrl(part.source.url);
+        } else if (typeof part.text === 'string') {
+          scanString(part.text);
+        }
+      });
+    }
+
+    if (Array.isArray(msg.images)) {
+      msg.images.forEach(im => {
+        if (!im) return;
+        if (typeof im === 'string') {
+          if (im.startsWith('data:image/')) pushB64(im.split(',')[1]);
+          else pushUrl(im);
+        } else if (im.url) pushUrl(im.url);
+        else if (im.b64_json) pushB64(im.b64_json);
+      });
+    }
+
+    return items;
   }
 
   function renderResults(items, prompt) {
