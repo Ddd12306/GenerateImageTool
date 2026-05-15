@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Right Code 生图工具</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: #f5f5f7;
+    color: #1d1d1f;
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .container {
+    max-width: 880px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 22px;
+    margin-bottom: 20px;
+    font-weight: 600;
+  }
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    margin-bottom: 16px;
+  }
+  .row { margin-bottom: 14px; }
+  label {
+    display: block;
+    font-size: 13px;
+    color: #555;
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  input, select, textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d2d2d7;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    background: #fff;
+    transition: border-color 0.15s;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: #0071e3;
+  }
+  textarea {
+    resize: vertical;
+    min-height: 90px;
+  }
+  .grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+  }
+  .key-wrap { position: relative; }
+  .key-wrap input { padding-right: 60px; }
+  .toggle-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #0071e3;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 4px 8px;
+  }
+  .actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-top: 6px;
+  }
+  button.primary {
+    background: #0071e3;
+    color: #fff;
+    border: none;
+    padding: 11px 22px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  button.primary:hover { background: #0077ed; }
+  button.primary:disabled {
+    background: #a8a8af;
+    cursor: not-allowed;
+  }
+  .hint { font-size: 12px; color: #888; }
+  .status {
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    display: none;
+  }
+  .status.loading {
+    background: #eef5ff;
+    color: #0050b3;
+    display: block;
+  }
+  .status.error {
+    background: #fff1f0;
+    color: #cf1322;
+    display: block;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .results {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+  }
+  .result-item {
+    border: 1px solid #e5e5ea;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #fafafa;
+  }
+  .result-item img {
+    width: 100%;
+    display: block;
+    cursor: zoom-in;
+  }
+  .result-item .meta {
+    padding: 8px 12px;
+    font-size: 12px;
+    color: #666;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .result-item a {
+    color: #0071e3;
+    text-decoration: none;
+  }
+  .empty {
+    text-align: center;
+    color: #999;
+    padding: 32px;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Right Code 生图工具</h1>
+
+  <div class="card">
+    <div class="row">
+      <label>API 地址</label>
+      <input id="baseUrl" value="https://www.right.codes/draw/v1/images/generations">
+      <div class="hint" style="margin-top:4px;">默认指向 right.codes 的 OpenAI 兼容生图端点</div>
+    </div>
+
+    <div class="row">
+      <label>API Key</label>
+      <div class="key-wrap">
+        <input id="apiKey" type="password" placeholder="sk-...">
+        <button class="toggle-btn" onclick="toggleKey()">显示</button>
+      </div>
+    </div>
+
+    <div class="row grid-3">
+      <div>
+        <label>模型</label>
+        <input id="model" value="gpt-image-2" list="modelList">
+        <datalist id="modelList">
+          <option value="gpt-image-2">
+          <option value="gpt-image-2-vip">
+          <option value="nano-banana">
+          <option value="nano-banana-2">
+          <option value="nano-banana-pro">
+        </datalist>
+      </div>
+      <div>
+        <label>尺寸</label>
+        <select id="size">
+          <option value="1024x1024">1024x1024</option>
+          <option value="1024x1536">1024x1536（竖图）</option>
+          <option value="1536x1024">1536x1024（横图）</option>
+          <option value="auto">auto</option>
+        </select>
+      </div>
+      <div>
+        <label>数量</label>
+        <select id="n">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="4">4</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row">
+      <label>提示词 Prompt</label>
+      <textarea id="prompt" placeholder="描述你想要的画面..."></textarea>
+    </div>
+
+    <div class="actions">
+      <button class="primary" id="genBtn" onclick="generate()">生成图片</button>
+      <span class="hint">Key 会保存在浏览器本地，不会上传</span>
+    </div>
+  </div>
+
+  <div id="status" class="status"></div>
+
+  <div class="card">
+    <div id="results" class="results">
+      <div class="empty">还没有生成结果</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const STORAGE_KEY = 'rightcode-img-tool-v1';
+
+  // 加载持久化设置
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    if (saved.baseUrl) $('baseUrl').value = saved.baseUrl;
+    if (saved.apiKey) $('apiKey').value = saved.apiKey;
+    if (saved.model) $('model').value = saved.model;
+    if (saved.size) $('size').value = saved.size;
+  } catch (e) {}
+
+  function saveSettings() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      baseUrl: $('baseUrl').value,
+      apiKey: $('apiKey').value,
+      model: $('model').value,
+      size: $('size').value,
+    }));
+  }
+
+  function toggleKey() {
+    const input = $('apiKey');
+    const btn = document.querySelector('.toggle-btn');
+    if (input.type === 'password') {
+      input.type = 'text';
+      btn.textContent = '隐藏';
+    } else {
+      input.type = 'password';
+      btn.textContent = '显示';
+    }
+  }
+
+  function showStatus(text, type) {
+    const el = $('status');
+    el.textContent = text;
+    el.className = 'status ' + type;
+  }
+
+  function hideStatus() {
+    $('status').className = 'status';
+  }
+
+  async function generate() {
+    const baseUrl = $('baseUrl').value.trim();
+    const apiKey = $('apiKey').value.trim();
+    const model = $('model').value.trim();
+    const size = $('size').value;
+    const n = parseInt($('n').value, 10);
+    const prompt = $('prompt').value.trim();
+
+    if (!apiKey) return showStatus('请填写 API Key', 'error');
+    if (!model) return showStatus('请填写模型名', 'error');
+    if (!prompt) return showStatus('请填写提示词', 'error');
+
+    saveSettings();
+
+    const btn = $('genBtn');
+    btn.disabled = true;
+    btn.textContent = '生成中...';
+    showStatus('请求已发出，等待返回（生图通常需要 10-60 秒）...', 'loading');
+
+    try {
+      const body = { model, prompt, n, size };
+      const resp = await fetch(baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + apiKey,
+        },
+        body: JSON.stringify(body),
+      });
+
+      const text = await resp.text();
+      let data;
+      try { data = JSON.parse(text); } catch (e) {
+        throw new Error('返回不是合法 JSON：\n' + text.slice(0, 500));
+      }
+
+      if (!resp.ok) {
+        const msg = data.error?.message || data.message || JSON.stringify(data);
+        throw new Error(`HTTP ${resp.status}：${msg}`);
+      }
+
+      if (!data.data || !Array.isArray(data.data) || data.data.length === 0) {
+        throw new Error('返回结果为空：\n' + JSON.stringify(data, null, 2));
+      }
+
+      renderResults(data.data, prompt);
+      hideStatus();
+    } catch (err) {
+      showStatus('生成失败：' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '生成图片';
+    }
+  }
+
+  function renderResults(items, prompt) {
+    const box = $('results');
+    box.innerHTML = '';
+    items.forEach((it, idx) => {
+      const div = document.createElement('div');
+      div.className = 'result-item';
+
+      let src = '';
+      if (it.url) src = it.url;
+      else if (it.b64_json) src = 'data:image/png;base64,' + it.b64_json;
+
+      const img = document.createElement('img');
+      img.src = src;
+      img.alt = prompt;
+      img.onclick = () => window.open(src, '_blank');
+
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.innerHTML = `<span>#${idx + 1}</span>` +
+        (it.url ? `<a href="${it.url}" target="_blank">在新窗口打开</a>` :
+                  `<a href="${src}" download="image-${Date.now()}.png">下载</a>`);
+
+      div.appendChild(img);
+      div.appendChild(meta);
+      box.appendChild(div);
+    });
+  }
+</script>
+</body>
+</html>
